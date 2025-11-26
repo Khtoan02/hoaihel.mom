@@ -194,6 +194,43 @@ add_action('wp_ajax_hoaihel_submit_survey', 'hoaihel_mom_handle_survey_submissio
 add_action('wp_ajax_nopriv_hoaihel_submit_survey', 'hoaihel_mom_handle_survey_submission');
 
 /**
+ * Tính toán các chỉ số tổng quan từ dữ liệu khảo sát.
+ *
+ * @param array $data
+ * @return array
+ */
+function hoaihel_mom_survey_metrics(array $data) {
+    $symptom_total = 6;
+    $symptom_count = isset($data['symptoms']) && is_array($data['symptoms']) ? count($data['symptoms']) : 0;
+    $observation   = $symptom_total ? min(100, round(($symptom_count / $symptom_total) * 100)) : 0;
+
+    $doctor_map = [
+        __('Rất cần thiết', 'hoaihel-mom')        => 95,
+        __('Cần thiết một phần', 'hoaihel-mom')   => 70,
+        __('Phân vân', 'hoaihel-mom')             => 50,
+        __('Chưa thấy cần thiết', 'hoaihel-mom')  => 30,
+    ];
+    $doctor_score = $doctor_map[$data['doctor_role'] ?? ''] ?? 50;
+
+    $dairy_map = [
+        __('Sẵn sàng', 'hoaihel-mom')        => 90,
+        __('E ngại', 'hoaihel-mom')          => 60,
+        __('Cần tư vấn', 'hoaihel-mom')      => 45,
+    ];
+    $dairy_score = $dairy_map[$data['dairy_free'] ?? ''] ?? 50;
+
+    $overall = round(($observation + $doctor_score + $dairy_score) / 3);
+
+    return [
+        'observation'   => $observation,
+        'doctor'        => $doctor_score,
+        'compliance'    => $dairy_score,
+        'overall'       => $overall,
+        'symptom_count' => $symptom_count,
+    ];
+}
+
+/**
  * Tùy biến giao diện xem khảo sát trong Admin.
  */
 function hoaihel_mom_survey_metabox() {
@@ -216,6 +253,7 @@ function hoaihel_mom_render_survey_metabox(WP_Post $post) {
     }
 
     $contact = isset($data['contact']) && is_array($data['contact']) ? $data['contact'] : [];
+    $metrics = hoaihel_mom_survey_metrics($data);
     $symptom_html = __('Không chọn', 'hoaihel-mom');
     if (!empty($data['symptoms']) && is_array($data['symptoms'])) {
         $symptom_html = '<ul class="hhm-survey-chips">';
@@ -276,6 +314,24 @@ function hoaihel_mom_render_survey_metabox(WP_Post $post) {
                 </p>
             </div>
         </div>
+        <div class="hhm-survey-admin__metrics">
+            <?php foreach (['observation' => __('Quan sát', 'hoaihel-mom'), 'doctor' => __('Làm việc với bác sĩ', 'hoaihel-mom'), 'compliance' => __('Sẵn sàng can thiệp', 'hoaihel-mom')] as $key => $label) : ?>
+                <div class="hhm-survey-admin__metric">
+                    <p><?php echo esc_html($label); ?></p>
+                    <div class="hhm-survey-admin__metric-bar">
+                        <span style="width: <?php echo esc_attr($metrics[$key]); ?>%;"></span>
+                    </div>
+                    <strong><?php echo esc_html($metrics[$key]); ?>%</strong>
+                </div>
+            <?php endforeach; ?>
+            <div class="hhm-survey-admin__metric hhm-survey-admin__metric--overall">
+                <p><?php esc_html_e('Tổng quan', 'hoaihel-mom'); ?></p>
+                <div class="hhm-survey-admin__metric-bar">
+                    <span style="width: <?php echo esc_attr($metrics['overall']); ?>%;"></span>
+                </div>
+                <strong><?php echo esc_html($metrics['overall']); ?>%</strong>
+            </div>
+        </div>
         <?php foreach ($sections as $section_title => $items) : ?>
             <section class="hhm-survey-admin__section">
                 <h3><?php echo esc_html($section_title); ?></h3>
@@ -321,6 +377,44 @@ function hoaihel_mom_admin_assets($hook) {
                 color: #111827;
                 margin: 0;
             }
+            .hhm-survey-admin__metrics {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .hhm-survey-admin__metric {
+                padding: 1rem 1.2rem;
+                border-radius: 12px;
+                border: 1px solid #e0e7ff;
+                background: #f8fafc;
+            }
+            .hhm-survey-admin__metric p {
+                margin: 0 0 .4rem;
+                font-weight: 600;
+                color: #312e81;
+            }
+            .hhm-survey-admin__metric-bar {
+                height: 6px;
+                border-radius: 999px;
+                background: #e5e7eb;
+                overflow: hidden;
+                margin-bottom: .35rem;
+            }
+            .hhm-survey-admin__metric-bar span {
+                display: block;
+                height: 100%;
+                background: linear-gradient(90deg, #a855f7, #6366f1);
+            }
+            .hhm-survey-admin__metric strong {
+                font-size: 18px;
+                color: #111827;
+                display: inline-block;
+            }
+            .hhm-survey-admin__metric--overall {
+                border-color: #fcd34d;
+                background: #fffbeb;
+            }
             .hhm-survey-admin__section {
                 background: #ffffff;
                 border: 1px solid #e5e7eb;
@@ -359,11 +453,6 @@ function hoaihel_mom_admin_assets($hook) {
                 color: #374151;
                 line-height: 1.5;
             }
-            @media (max-width: 768px) {
-                .hhm-survey-admin__row {
-                    grid-template-columns: 1fr;
-                }
-            }
             .hhm-survey-chips {
                 list-style: none;
                 margin: 0;
@@ -381,6 +470,11 @@ function hoaihel_mom_admin_assets($hook) {
                 font-size: 12px;
                 font-weight: 600;
             }
+            @media (max-width: 768px) {
+                .hhm-survey-admin__row {
+                    grid-template-columns: 1fr;
+                }
+            }
         ';
         wp_add_inline_style('hoaihel-admin-survey', $css);
     }
@@ -395,6 +489,7 @@ function hoaihel_mom_survey_columns($columns) {
     foreach ($columns as $key => $label) {
         $new_columns[$key] = $label;
         if ($key === 'title') {
+            $new_columns['overview']   = __('Chỉ số tổng quan', 'hoaihel-mom');
             $new_columns['parent_name'] = __('Phụ huynh', 'hoaihel-mom');
             $new_columns['contact']     = __('Liên hệ', 'hoaihel-mom');
             $new_columns['receive']     = __('Nhận tin', 'hoaihel-mom');
@@ -411,7 +506,19 @@ function hoaihel_mom_survey_column_content($column, $post_id) {
         return;
     }
     $contact = $data['contact'] ?? [];
+    $metrics = hoaihel_mom_survey_metrics($data);
     switch ($column) {
+        case 'overview':
+            echo '<div class="hhm-survey-list-meter"><span>' . esc_html__('Tổng quan', 'hoaihel-mom') . ': ' . esc_html($metrics['overall']) . '%</span>';
+            echo '<div class="hhm-survey-list-meter__bar"><span style="width:' . esc_attr($metrics['overall']) . '%"></span></div>';
+            echo '<small>' . sprintf(
+                /* translators: 1: observation, 2: doctor, 3: compliance */
+                esc_html__('Quan sát %1$s%% · Bác sĩ %2$s%% · Sẵn sàng %3$s%%', 'hoaihel-mom'),
+                esc_html($metrics['observation']),
+                esc_html($metrics['doctor']),
+                esc_html($metrics['compliance'])
+            ) . '</small></div>';
+            break;
         case 'parent_name':
             echo esc_html($contact['name'] ?? __('Chưa có', 'hoaihel-mom'));
             break;
@@ -431,6 +538,167 @@ function hoaihel_mom_survey_column_content($column, $post_id) {
     }
 }
 add_action('manage_hhm_survey_posts_custom_column', 'hoaihel_mom_survey_column_content', 10, 2);
+
+/**
+ * Style list view & nút xuất CSV.
+ */
+function hoaihel_mom_admin_list_styles($hook) {
+    if ($hook !== 'edit.php') {
+        return;
+    }
+    $screen = get_current_screen();
+    if ($screen && $screen->post_type === 'hhm_survey') {
+        $css = '
+            .column-overview { width: 28%; }
+            .hhm-survey-list-meter {
+                font-size: 13px;
+                font-weight: 600;
+                color: #111827;
+            }
+            .hhm-survey-list-meter__bar {
+                height: 6px;
+                border-radius: 999px;
+                background: #e5e7eb;
+                margin: 6px 0;
+                overflow: hidden;
+            }
+            .hhm-survey-list-meter__bar span {
+                display: block;
+                height: 100%;
+                background: linear-gradient(90deg, #34d399, #059669);
+            }
+            .hhm-survey-list-meter small {
+                font-size: 11px;
+                text-transform: uppercase;
+                color: #6b7280;
+            }
+        ';
+        wp_add_inline_style('wp-admin', $css);
+    }
+}
+add_action('admin_enqueue_scripts', 'hoaihel_mom_admin_list_styles');
+
+/**
+ * Hiển thị nút tải CSV ở phần tablenav.
+ */
+function hoaihel_mom_survey_export_button($which) {
+    $screen = get_current_screen();
+    if ($screen->post_type !== 'hhm_survey' || $which !== 'top') {
+        return;
+    }
+    $url = wp_nonce_url(
+        add_query_arg('hoaihel_export', 'all', admin_url('edit.php?post_type=hhm_survey')),
+        'hoaihel_export_surveys'
+    );
+    echo '<a class="button button-primary" style="margin-left:6px;" href="' . esc_url($url) . '">' . esc_html__('Tải CSV tổng', 'hoaihel-mom') . '</a>';
+}
+add_action('manage_posts_extra_tablenav', 'hoaihel_mom_survey_export_button', 10, 1);
+
+/**
+ * Export handler.
+ */
+function hoaihel_mom_survey_export_handler() {
+    if (empty($_GET['hoaihel_export'])) {
+        return;
+    }
+    if (!current_user_can('edit_posts')) {
+        wp_die(__('Bạn không có quyền xuất dữ liệu.', 'hoaihel-mom'));
+    }
+    check_admin_referer('hoaihel_export_surveys');
+
+    $type = sanitize_key($_GET['hoaihel_export']);
+    $posts = [];
+    if ('single' === $type && !empty($_GET['survey_id'])) {
+        $id = absint($_GET['survey_id']);
+        $post = get_post($id);
+        if ($post && $post->post_type === 'hhm_survey') {
+            $posts = [$post];
+        }
+    } else {
+        $posts = get_posts([
+            'post_type'      => 'hhm_survey',
+            'post_status'    => 'private',
+            'posts_per_page' => -1,
+        ]);
+    }
+
+    if (empty($posts)) {
+        wp_die(__('Không có dữ liệu để xuất.', 'hoaihel-mom'));
+    }
+
+    $filename = 'hoaihel-surveys-' . gmdate('Ymd-His') . '.csv';
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename=' . $filename);
+    $output = fopen('php://output', 'w');
+
+    fputcsv($output, [
+        'ID',
+        'Ngày gửi',
+        'Phụ huynh',
+        'Liên hệ',
+        'Nhận tin',
+        'Triệu chứng',
+        'Lịch sử khám',
+        'Đang bổ sung',
+        'Vai trò bác sĩ',
+        'Khó khăn',
+        'Mục tiêu',
+        'Câu hỏi',
+        'Điểm Quan sát (%)',
+        'Điểm Bác sĩ (%)',
+        'Điểm Sẵn sàng (%)',
+        'Điểm Tổng quan (%)',
+    ]);
+
+    foreach ($posts as $post) {
+        $data    = get_post_meta($post->ID, 'hhm_survey_data', true);
+        $metrics = is_array($data) ? hoaihel_mom_survey_metrics($data) : [];
+        $contact = $data['contact'] ?? [];
+        fputcsv($output, [
+            $post->ID,
+            get_post_time('Y-m-d H:i', true, $post),
+            $contact['name'] ?? '',
+            trim(($contact['zalo'] ?? '') . ' ' . ($contact['email'] ?? '')),
+            $data['receive_info'] ?? '',
+            isset($data['symptoms']) ? implode(' | ', (array) $data['symptoms']) : '',
+            $data['diagnosis_history'] ?? '',
+            $data['current_treatment'] ?? '',
+            $data['doctor_role'] ?? '',
+            $data['challenges'] ?? '',
+            $data['priority_goal'] ?? '',
+            $data['question'] ?? '',
+            $metrics['observation'] ?? '',
+            $metrics['doctor'] ?? '',
+            $metrics['compliance'] ?? '',
+            $metrics['overall'] ?? '',
+        ]);
+    }
+    fclose($output);
+    exit;
+}
+add_action('admin_init', 'hoaihel_mom_survey_export_handler');
+
+/**
+ * Row action cho xuất CSV từng khảo sát.
+ */
+function hoaihel_mom_survey_row_actions($actions, $post) {
+    if ($post->post_type !== 'hhm_survey') {
+        return $actions;
+    }
+    $url = wp_nonce_url(
+        add_query_arg(
+            [
+                'hoaihel_export' => 'single',
+                'survey_id'      => $post->ID,
+            ],
+            admin_url('edit.php?post_type=hhm_survey')
+        ),
+        'hoaihel_export_surveys'
+    );
+    $actions['export'] = '<a href="' . esc_url($url) . '">' . esc_html__('Tải CSV', 'hoaihel-mom') . '</a>';
+    return $actions;
+}
+add_filter('post_row_actions', 'hoaihel_mom_survey_row_actions', 10, 2);
 
 /**
  * Đảm bảo wp_body_open tồn tại (WP < 5.2).
