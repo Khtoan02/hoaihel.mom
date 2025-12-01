@@ -384,7 +384,7 @@ get_header();
                     <!-- Câu 10: Thông tin liên hệ -->
                     <div class="bg-purple-50 rounded-lg p-5 border border-purple-100 mb-6">
                         <label class="block text-purple-900 font-bold mb-3">
-                            10. Bạn có muốn nhận thông tin về các nhà chuyên môn, xét nghiệm uy tín và tiến bộ khoa học mới nhất về CFD không?
+                            10. Bố mẹ có muốn nhận ý kiến phản hồi của bác sỹ Thần kinh - Y sinh về những câu hỏi của mình và được tư vấn về chương trình điều trị cá nhân hóa cho con không?
                         </label>
                         <div class="flex items-center space-x-6 mb-4">
                             <div class="flex items-center">
